@@ -1,0 +1,12 @@
+{
+  "type": "struct",
+  "fields": [
+    {"name": "order_id", "type": "string", "nullable": true},
+    {"name": "customer_id", "type": "string", "nullable": true},
+    {"name": "product_id", "type": "string", "nullable": true},
+    {"name": "quantity", "type": "integer", "nullable": true},
+    {"name": "price", "type": "double", "nullable": true},
+    {"name": "order_date", "type": "string", "nullable": true},
+    {"name": "region", "type": "string", "nullable": true}
+  ]
+}

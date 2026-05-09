@@ -1,0 +1,40 @@
+# Entorno virtual y archivos de IDE
+.venv/
+venv/
+.env
+.idea/
+*.iml
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Distribución / build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Logs y temporales
+*.log
+*.tmp
+*.swp
+
+# Databricks / DBFS local temp
+dbfs/
+*.db
+
+# Archivos de configuración local y secretos
+*.local
+secrets.yml
+*.secret
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos generados por el usuario que no deben ir al repo
+edge_all_open_tabs_metadata.txt
+tabs.py

@@ -1,0 +1,32 @@
+---
+datasets:
+  - name: sales
+    type: file
+    format: json
+    landing_path: abfss://landing@staingesttask01.dfs.core.windows.net/sales/incoming/
+    bronze_path: abfss://bronze@staingesttask01.dfs.core.windows.net/sales/
+    silver_path: abfss://silver@staingesttask01.dfs.core.windows.net/sales/
+    gold_path: abfss://gold@staingesttask01.dfs.core.windows.net/sales/
+    partition_cols: [ingest_date]
+    schema: configs/schemas/sales.json
+    autoloader:
+      schemaLocation: dbfs:/checkpoints/schema/sales
+      checkpointLocation: dbfs:/checkpoints/autoloader/sales
+    batch:
+      enabled: true
+      trigger: availableNow
+    streaming:
+      enabled: false
+
+  - name: events
+    type: kafka
+    format: json
+    kafka:
+      bootstrapServers: "<KAFKA_BOOTSTRAP>"
+      subscribePattern: "farmia-events-*"
+    bronze_path: abfss://bronze@staingesttask01.dfs.core.windows.net/events/
+    partition_cols: [ingest_date]
+    checkpointLocation: dbfs:/checkpoints/kafka/events
+    streaming:
+      enabled: false
+...
