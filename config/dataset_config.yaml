@@ -8,10 +8,10 @@ datasets:
     silver_path: abfss://silver@staingesttask01.dfs.core.windows.net/sales/
     gold_path: abfss://gold@staingesttask01.dfs.core.windows.net/sales/
     partition_cols: [ingest_date]
-    schema: configs/schemas/sales.json
+    schema: /Volumes/adbingesttask01/default/confs/sales.json
     autoloader:
-      schemaLocation: dbfs:/checkpoints/schema/sales
-      checkpointLocation: dbfs:/checkpoints/autoloader/sales
+      schemaLocation: abfss://bronze@staingesttask01.dfs.core.windows.net/sales/_schema
+      checkpointLocation: abfss://bronze@staingesttask01.dfs.core.windows.net/sales/_checkpoint
     batch:
       enabled: true
       trigger: availableNow
@@ -22,11 +22,14 @@ datasets:
     type: kafka
     format: json
     kafka:
-      bootstrapServers: "<KAFKA_BOOTSTRAP>"
-      subscribePattern: "farmia-events-*"
+      bootstrapServers: "pkc-qr9n1m.spaincentral.azure.confluent.cloud:9092"
+      subscribePattern: "farmia-events-iot"
+      "kafka.security.protocol": "SASL_SSL"
+      "kafka.sasl.mechanism": "PLAIN"
+      api_key: "EVMKISYYZRTQFARA"
     bronze_path: abfss://bronze@staingesttask01.dfs.core.windows.net/events/
     partition_cols: [ingest_date]
-    checkpointLocation: dbfs:/checkpoints/kafka/events
+    checkpointLocation: abfss://bronze@staingesttask01.dfs.core.windows.net/events/_checkpoint
     streaming:
-      enabled: false
+      enabled: true
 ...

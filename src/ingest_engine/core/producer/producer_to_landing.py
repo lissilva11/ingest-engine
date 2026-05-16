@@ -1,24 +1,9 @@
-# producer_to_landing.py
-import time, json, random, os
+import time, random, argparse
 from datetime import datetime
-from pathlib import Path
-import yaml
+from pyspark.sql import SparkSession
 
-# Config
-CONFIG_PATH = os.environ.get("DATASET_CONFIG", "configs/dataset_config.yaml")
-OUT_DIR = os.environ.get("PRODUCER_OUT_DIR", "./landing/sales")  # default local
-BATCH_SIZE = int(os.environ.get("PRODUCER_BATCH_SIZE", "50"))
-SLEEP_SECONDS = int(os.environ.get("PRODUCER_SLEEP_SECONDS", "30"))
-
-def load_config(path):
-    with open(path, "r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
-
-def get_landing_path(cfg, dataset_name="sales"):
-    for d in cfg.get("datasets", []):
-        if d.get("name") == dataset_name:
-            return d.get("landing_path")
-    return None
+from ingest_engine.core.utils.config_loader import load_config
+from ingest_engine.core.constants.constants import *
 
 def make_order(i):
     products = ["P001","P002","P003","P004"]
@@ -34,20 +19,31 @@ def make_order(i):
     }
 
 def main():
-    Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
-    cfg = load_config(CONFIG_PATH)
-    landing_path = get_landing_path(cfg, "sales")
-    print("Using landing_path from config:", landing_path)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", required=True, help="Path to dataset_config.yaml")
+    args = parser.parse_args()
+
+    cfg = load_config(args.config)
+
+    landing_path = next((d.get("landing_path") for d in cfg.get("datasets", []) if d.get("name") == DATASET_SALES), None)
+    print("Writing directly to Azure:", landing_path)
+
+    spark = SparkSession.builder.getOrCreate()
+
+    batch_size = 50
+    sleep_seconds = 30
     i = 0
-    while True:
-        rows = [make_order(i + j) for j in range(BATCH_SIZE)]
-        fname = f"{OUT_DIR}/sales_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{i}.json"
-        with open(fname, "w", encoding="utf-8") as fh:
-            for r in rows:
-                fh.write(json.dumps(r, ensure_ascii=False) + "\n")
-        print(f"Wrote {fname} ({len(rows)} records)")
-        i += BATCH_SIZE
-        time.sleep(SLEEP_SECONDS)
+    max_iterations = 5
+
+    for _ in range(max_iterations):
+        rows = [make_order(i + j) for j in range(batch_size)]
+
+        df = spark.createDataFrame(rows)
+        df.coalesce(1).write.format(FORMAT_JSON).mode(MODE_APPEND).save(landing_path)
+
+        print(f"Wrote batch of {len(rows)} records to {landing_path}")
+        i += batch_size
+        time.sleep(sleep_seconds)
 
 if __name__ == "__main__":
     main()

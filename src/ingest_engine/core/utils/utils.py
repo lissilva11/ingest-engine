@@ -1,6 +1,8 @@
+# ingest_engine/core/utils/utils.py
 import logging
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import current_timestamp, input_file_name, lit
+from pyspark.sql.functions import current_timestamp, lit, col
+from ingest_engine.core.constants.constants import *
 
 def get_logger(name: str = "ingest_engine"):
     logger = logging.getLogger(name)
@@ -13,6 +15,10 @@ def get_logger(name: str = "ingest_engine"):
     return logger
 
 def add_ingest_metadata(df: DataFrame, source_system: str):
-    return (df.withColumn("ingest_timestamp", current_timestamp())
-            .withColumn("source_system", lit(source_system))
-            .withColumn("source_file", input_file_name()))
+    df_with_meta = (df.withColumn(COL_INGEST_TIMESTAMP, current_timestamp())
+                    .withColumn(COL_SOURCE_SYSTEM, lit(source_system)))
+
+    if source_system == SOURCE_FILE:
+        return df_with_meta.withColumn(COL_SOURCE_FILE, col("_metadata.file_path"))
+    else:
+        return df_with_meta.withColumn(COL_SOURCE_FILE, lit(None).cast("string"))

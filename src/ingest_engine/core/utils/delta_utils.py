@@ -1,5 +1,6 @@
 from delta.tables import DeltaTable
 from pyspark.sql import DataFrame
+from ingest_engine.core.constants.constants import *
 
 def upsert_to_delta(df: DataFrame, target_path: str, key_cols: list):
     spark = df.sparkSession
@@ -12,4 +13,4 @@ def upsert_to_delta(df: DataFrame, target_path: str, key_cols: list):
          .whenNotMatchedInsertAll()
          .execute())
     else:
-        df.write.format("delta").mode("overwrite").save(target_path)
+        df.write.format(FORMAT_DELTA).mode(MODE_OVERWRITE).save(target_path)

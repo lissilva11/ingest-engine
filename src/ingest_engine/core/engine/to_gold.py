@@ -1,27 +1,21 @@
-# to_gold.py
-import os, yaml
+import argparse
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import to_date, col, sum as _sum
 
-CONFIG_PATH = os.environ.get("DATASET_CONFIG", "configs/dataset_config.yaml")
-
-def load_config(path):
-    with open(path, "r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
-
-def get_paths(cfg, name="sales"):
-    for d in cfg.get("datasets", []):
-        if d.get("name") == name:
-            return d.get("silver_path"), d.get("gold_path")
-    raise RuntimeError("Dataset not found in config")
+from ingest_engine.core.utils.config_loader import load_config, get_paths
+from ingest_engine.core.constants.constants import *
 
 def main():
-    spark = SparkSession.builder.getOrCreate()
-    cfg = load_config(CONFIG_PATH)
-    silver_path, gold_path = get_paths(cfg, "sales")
-    print("Silver:", silver_path, "Gold:", gold_path)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", required=True)
+    args = parser.parse_args()
 
-    df = spark.read.format("delta").load(silver_path)
+    spark = SparkSession.builder.getOrCreate()
+    cfg = load_config(args.config)
+    _, silver_path = get_paths(cfg, DATASET_SALES)
+    print("Silver:", silver_path, "Gold: Managed by Unity Catalog")
+
+    df = spark.read.format(FORMAT_DELTA).load(silver_path)
 
     agg = (df.groupBy(to_date(col("order_date")).alias("order_day"), col("region"))
     .agg(
@@ -29,9 +23,11 @@ def main():
         _sum(col("quantity")).alias("total_units")
     ))
 
-    agg.write.format("delta").mode("overwrite").partitionBy("order_day").save(gold_path)
-    spark.sql(f"CREATE TABLE IF NOT EXISTS gold.sales_daily USING DELTA LOCATION '{gold_path}'")
-    print("Gold tables updated")
+    # Usamos las constantes del esquema para guardar en Unity Catalog
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA_GOLD}")
+    agg.write.format(FORMAT_DELTA).mode(MODE_OVERWRITE).partitionBy("order_day").saveAsTable(TABLE_GOLD_SALES)
+
+    print(f"Gold tables updated in Unity Catalog: {TABLE_GOLD_SALES}!")
 
 if __name__ == "__main__":
     main()

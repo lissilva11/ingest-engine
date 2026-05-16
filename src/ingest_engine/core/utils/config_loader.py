@@ -9,3 +9,9 @@ def load_config(path: str) -> Dict[str, Any]:
     with p.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     return cfg
+
+def get_paths(cfg, name):
+    for d in cfg.get("datasets", []):
+        if d.get("name") == name:
+            return d.get("bronze_path"), d.get("silver_path")
+    raise RuntimeError("Dataset not found in config")

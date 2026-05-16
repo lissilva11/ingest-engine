@@ -1,12 +1,24 @@
-from pyspark.sql import SparkSession
-from core.utils.utils import add_ingest_metadata, get_logger
-from pyspark.sql.functions import from_json, col
+import argparse
 import json
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import from_json, col
+
+from ingest_engine.core.utils.utils import add_ingest_metadata, get_logger
+from ingest_engine.core.utils.config_loader import load_config
+from ingest_engine.core.constants.constants import *
 
 logger = get_logger("stream_ingest")
 
 def run_stream_kafka(dataset_cfg: dict):
     spark = SparkSession.builder.getOrCreate()
+
+    try:
+        from pyspark.dbutils import DBUtils
+        dbutils = DBUtils(spark)
+    except ImportError:
+        logger.warning("DBUtils no está disponible localmente.")
+        dbutils = None
+
     kafka_cfg = dataset_cfg["kafka"]
     bronze = dataset_cfg["bronze_path"]
     checkpoint = dataset_cfg["checkpointLocation"]
@@ -14,32 +26,63 @@ def run_stream_kafka(dataset_cfg: dict):
 
     logger.info(f"Starting Kafka stream for {dataset_cfg['name']}")
 
-    raw = (spark.readStream
-           .format("kafka")
-           .option("kafka.bootstrap.servers", kafka_cfg["bootstrapServers"])
-           .option("subscribePattern", kafka_cfg.get("subscribePattern"))
-           .option("startingOffsets", "latest")
-           .load())
+    api_key = kafka_cfg.get("api_key")
+
+    try:
+        api_secret = dbutils.secrets.get(scope=SECRET_SCOPE, key=KAFKA_SECRET_KEY)
+    except Exception as e:
+        logger.error("No se pudo leer el secreto de Kafka del Key Vault.")
+        raise e
+
+    jaas_config = JAAS_TEMPLATE.format(api_key, api_secret)
+
+    reader = (spark.readStream
+              .format(FORMAT_KAFKA)
+              .option("kafka.bootstrap.servers", kafka_cfg.get("bootstrapServers"))
+              .option("subscribePattern", kafka_cfg.get("subscribePattern"))
+              .option("startingOffsets", "earliest")
+              .option("kafka.security.protocol", kafka_cfg.get("kafka.security.protocol"))
+              .option("kafka.sasl.mechanism", kafka_cfg.get("kafka.sasl.mechanism"))
+              .option("kafka.sasl.jaas.config", jaas_config))
+
+    raw = reader.load()
 
     json_schema = None
     if schema_path:
-        # read a single JSON to infer schema or load schema definition
         try:
             with open(schema_path, "r", encoding="utf-8") as f:
-                schema_json = json.load(f)
-            # If you want to convert to Spark schema, do it in runtime; here we parse as string
-        except Exception:
+                json_schema = json.load(f)
+        except Exception as e:
+            logger.warning(f"No se pudo cargar el esquema: {e}")
             json_schema = None
 
-    parsed = raw.select(from_json(col("value").cast("string"), json_schema).alias("data")).select("data.*") if json_schema else raw.selectExpr("CAST(value AS STRING) as value")
+    if json_schema:
+        parsed = raw.select(from_json(col(COL_VALUE).cast("string"), json_schema).alias(COL_DATA)).select(f"{COL_DATA}.*")
+    else:
+        parsed = raw.selectExpr(f"CAST({COL_VALUE} AS STRING) as {COL_VALUE}")
 
-    parsed2 = add_ingest_metadata(parsed, source_system="kafka")
+    parsed2 = add_ingest_metadata(parsed, source_system=SOURCE_KAFKA)
 
     query = (parsed2.writeStream
-             .format("delta")
+             .format(FORMAT_DELTA)
              .option("checkpointLocation", checkpoint)
-             .outputMode("append")
+             .outputMode(MODE_APPEND)
              .start(bronze))
 
-    logger.info("Kafka stream started")
+    logger.info("Kafka stream started and waiting for events...")
     query.awaitTermination()
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", required=True)
+    args = parser.parse_args()
+
+    cfg = load_config(args.config)
+
+    for ds in cfg.get("datasets", []):
+        if ds.get("streaming", {}).get("enabled", False) and ds.get("type") == TYPE_KAFKA:
+            logger.info(f"Running streaming ingest for dataset: {ds.get('name')}")
+            run_stream_kafka(ds)
+
+if __name__ == "__main__":
+    main()
