@@ -23,7 +23,6 @@ def main():
         _sum(col("quantity")).alias("total_units")
     ))
 
-    # Usamos las constantes del esquema para guardar en Unity Catalog
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA_GOLD}")
     agg.write.format(FORMAT_DELTA).mode(MODE_OVERWRITE).partitionBy("order_day").saveAsTable(TABLE_GOLD_SALES)
 

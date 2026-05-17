@@ -1,4 +1,3 @@
-# ingest_engine/core/utils/utils.py
 import logging
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import current_timestamp, lit, col
